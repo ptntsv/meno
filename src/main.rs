@@ -1,11 +1,11 @@
-use std::env;
-use std::fs;
 use crate::lexer::Lexer;
 use crate::parser::Parser;
+use std::env;
+use std::fs;
 
+pub mod ast;
 pub mod lexer;
 pub mod parser;
-pub mod ast;
 
 fn main() {
   let args: Vec<String> = env::args().collect();
@@ -13,10 +13,11 @@ fn main() {
   let content = fs::read_to_string(src_path).expect("Should have been able to read the file");
   println!("With text:\n{content}");
   let mut lexer = Lexer::new(&content);
-  let lxms = lexer.tokenize();
+  let lxms = lexer.lex();
   for l in lxms {
     println!("{:?}", l);
   }
-  // let mut parser = Parser::new(&lxms);
-  // let tkns = 
+  let s = String::from("123");
+  let mut it = s.chars().peekable();
+  let _ = it.peek();
 }

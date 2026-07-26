@@ -1,7 +1,7 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lexeme {
-  Char(char),
-  Digit(char),
+  Word(String),
+  Int(u32),
   Plus,
   Minus,
   Star,
@@ -15,41 +15,58 @@ pub struct Lexer {
 }
 
 impl Lexer {
-  fn end(&self) -> bool {
-    self.idx >= self.str.len()
-  }
   pub fn new(src: &str) -> Self {
-    Lexer { str: src.to_owned(), idx: 0 }
+    Lexer {
+      str: src.to_owned(),
+      idx: 0,
+    }
   }
-  fn next_char(&mut self) -> Option<char> {
+  fn consume(&mut self) -> Option<char> {
     self.idx += 1;
     self.str.chars().nth(self.idx - 1)
   }
-  pub fn tokenize(&mut self) -> Vec<Lexeme> {
-    let mut tokens: Vec<Lexeme> = Vec::new();
-    while !self.end() {
-      let maybe_ch = self.next_char();
-      if let Some(ch) = maybe_ch {
-        if ch.is_whitespace() {
-          continue;
-        } else if ch.is_digit(10) {
-          tokens.push(Lexeme::Digit(ch));
-        } else if ch.is_alphabetic() {
-          tokens.push(Lexeme::Char(ch));
-        } else if ch == '+' {
-          tokens.push(Lexeme::Plus);
-        } else if ch == '-' {
-          tokens.push(Lexeme::Minus);
-        } else if ch == '*' {
-          tokens.push(Lexeme::Star);
-        } else if ch == '/' {
-          tokens.push(Lexeme::Slash);
-        } else {
-          tokens.push(Lexeme::Unknown(ch));
-        }
+  fn refuse(&mut self) {
+    self.idx -= 1
+  }
+  fn number(&mut self) -> Option<u32> {
+    let mut val: u32 = 0;
+    let mut any: bool = false;
+    while let Some(ch) = self.consume() {
+      if let Some(digit) = ch.to_digit(10) {
+        val = val * 10 + digit;
+        any = true;
       } else {
-        println!("Something went wrong, str: {}, idx: {}", self.str, self.idx);
-        break;
+        self.refuse();
+        break
+      }
+    }
+    any.then_some(val)
+  }
+  fn word(&mut self) -> Option<String> {
+    None
+  }
+  pub fn lex(&mut self) -> Vec<Lexeme> {
+    let mut tokens: Vec<Lexeme> = Vec::new();
+    while let Some(ch) = self.consume() {
+      if ch.is_whitespace() {
+        continue;
+      } else if ch.is_ascii_digit() {
+        self.refuse();
+        if let Some(n) = self.number() {
+          tokens.push(Lexeme::Int(n));
+        }
+      } else if ch.is_alphabetic() {
+        // tokens.push(self.word());
+      } else if ch == '+' {
+        tokens.push(Lexeme::Plus);
+      } else if ch == '-' {
+        tokens.push(Lexeme::Minus);
+      } else if ch == '*' {
+        tokens.push(Lexeme::Star);
+      } else if ch == '/' {
+        tokens.push(Lexeme::Slash);
+      } else {
+        tokens.push(Lexeme::Unknown(ch));
       }
     }
     tokens
