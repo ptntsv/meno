@@ -17,7 +17,4 @@ fn main() {
   for l in lxms {
     println!("{:?}", l);
   }
-  let s = String::from("123");
-  let mut it = s.chars().peekable();
-  let _ = it.peek();
 }

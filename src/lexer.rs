@@ -1,3 +1,5 @@
+use std::{iter::Peekable, str::Chars};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Lexeme {
   Word(String),
@@ -9,52 +11,37 @@ pub enum Lexeme {
   Unknown(char),
 }
 
-pub struct Lexer {
-  str: String,
-  idx: usize,
+pub struct Lexer<'a> {
+  strm: Peekable<Chars<'a>>,
 }
 
-impl Lexer {
-  pub fn new(src: &str) -> Self {
+impl<'a> Lexer<'a> {
+  pub fn new(src: &'a str) -> Self {
     Lexer {
-      str: src.to_owned(),
-      idx: 0,
+      strm: src.chars().peekable(),
     }
   }
-  fn consume(&mut self) -> Option<char> {
-    self.idx += 1;
-    self.str.chars().nth(self.idx - 1)
-  }
-  fn refuse(&mut self) {
-    self.idx -= 1
-  }
-  fn number(&mut self) -> Option<u32> {
-    let mut val: u32 = 0;
-    let mut any: bool = false;
-    while let Some(ch) = self.consume() {
-      if let Some(digit) = ch.to_digit(10) {
-        val = val * 10 + digit;
-        any = true;
-      } else {
-        self.refuse();
-        break
-      }
+  fn number(&mut self) -> String {
+    let mut num_str = String::new();
+    while let Some(ch) = self.strm.next_if(|ch| ch.is_digit(10)) {
+      num_str.push(ch);
     }
-    any.then_some(val)
+    num_str
   }
   fn word(&mut self) -> Option<String> {
     None
   }
   pub fn lex(&mut self) -> Vec<Lexeme> {
     let mut tokens: Vec<Lexeme> = Vec::new();
-    while let Some(ch) = self.consume() {
+    while let Some(ch) = self.strm.next() {
       if ch.is_whitespace() {
         continue;
       } else if ch.is_ascii_digit() {
-        self.refuse();
-        if let Some(n) = self.number() {
-          tokens.push(Lexeme::Int(n));
-        }
+        let mut nat = String::from(ch);
+        let rest = self.number();
+        nat.push_str(&rest);
+        let nat: u32 = nat.parse().expect("Can't parse {int_str}");
+        tokens.push(Lexeme::Int(nat));
       } else if ch.is_alphabetic() {
         // tokens.push(self.word());
       } else if ch == '+' {
