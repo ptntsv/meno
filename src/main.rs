@@ -13,8 +13,11 @@ fn main() {
   let content = fs::read_to_string(src_path).expect("Should have been able to read the file");
   println!("With text:\n{content}");
   let mut lexer = Lexer::new(&content);
-  let lxms = lexer.lex();
-  for l in lxms {
-    println!("{:?}", l);
-  }
+  let lxms = lexer.tokenize();
+  // for l in &lxms {
+  //   println!("{:?}", l);
+  // }
+  let mut parser = Parser::new(&lxms);
+  let ast = parser.parse_program();
+  println!("{:?}", ast);
 }

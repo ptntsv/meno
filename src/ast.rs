@@ -1,17 +1,31 @@
-enum Op {
-  Add, Sub, Mul, Div
+#[derive(Debug, Clone, PartialEq)]
+pub enum BinaryOp {
+  Add,
+  Sub,
+  Mul,
+  Div,
 }
-pub enum AstNode {
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOp {
+  Neg,
 }
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-  Nat(i32),
+  Int(i32),
   Unary {
-    op: Op,
-    child: Box<Expr>
+    op: UnaryOp,
+    child: Box<Expr>,
   },
   Binary {
-    op: Op,
+    op: BinaryOp,
     left: Box<Expr>,
     right: Box<Expr>,
-  }
+  },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstNode {
+  Expr(Expr),
 }

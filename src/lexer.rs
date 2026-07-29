@@ -1,13 +1,18 @@
 use std::{iter::Peekable, str::Chars};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Lexeme {
+pub enum Token {
   Word(String),
-  Int(u32),
+  Int(i32),
   Plus,
   Minus,
   Star,
   Slash,
+  Identifier(String),
+  Keyword(String),
+  LParen,
+  RParen,
   Unknown(char),
 }
 
@@ -21,18 +26,22 @@ impl<'a> Lexer<'a> {
       strm: src.chars().peekable(),
     }
   }
-  fn number(&mut self) -> String {
-    let mut num_str = String::new();
-    while let Some(ch) = self.strm.next_if(|ch| ch.is_digit(10)) {
-      num_str.push(ch);
+  fn next_until(&mut self, predicate: impl Fn(char) -> bool) -> String {
+    let mut substr = String::new();
+    while let Some(ch) = self.strm.next_if(|&ch| predicate(ch)) {
+      substr.push(ch);
     }
-    num_str
+    substr
   }
-  fn word(&mut self) -> Option<String> {
-    None
+  fn number(&mut self) -> String {
+    self.next_until(|c: char| c.is_ascii_digit())
   }
-  pub fn lex(&mut self) -> Vec<Lexeme> {
-    let mut tokens: Vec<Lexeme> = Vec::new();
+  fn name(&mut self) -> String {
+    self.next_until(|c: char| c.is_ascii_alphanumeric() || c == '_')
+  }
+  pub fn tokenize(&mut self) -> Vec<Token> {
+    let keywords : HashSet<&str> = HashSet::from(["for", "while", "if"]);
+    let mut tokens: Vec<Token> = Vec::new();
     while let Some(ch) = self.strm.next() {
       if ch.is_whitespace() {
         continue;
@@ -40,20 +49,31 @@ impl<'a> Lexer<'a> {
         let mut nat = String::from(ch);
         let rest = self.number();
         nat.push_str(&rest);
-        let nat: u32 = nat.parse().expect("Can't parse {int_str}");
-        tokens.push(Lexeme::Int(nat));
+        let nat: i32 = nat.parse().expect("Can't parse {int_str}");
+        tokens.push(Token::Int(nat));
       } else if ch.is_alphabetic() {
-        // tokens.push(self.word());
+        let mut name = String::from(ch);
+        let rest = self.name();
+        name.push_str(&rest);
+        if keywords.contains(name.as_str()) {
+          tokens.push(Token::Keyword(name));
+        } else {
+          tokens.push(Token::Identifier(name));
+        }
       } else if ch == '+' {
-        tokens.push(Lexeme::Plus);
+        tokens.push(Token::Plus);
       } else if ch == '-' {
-        tokens.push(Lexeme::Minus);
+        tokens.push(Token::Minus);
       } else if ch == '*' {
-        tokens.push(Lexeme::Star);
+        tokens.push(Token::Star);
       } else if ch == '/' {
-        tokens.push(Lexeme::Slash);
+        tokens.push(Token::Slash);
+      } else if ch == '(' {
+        tokens.push(Token::LParen);
+      } else if ch == ')' {
+        tokens.push(Token::RParen);
       } else {
-        tokens.push(Lexeme::Unknown(ch));
+        tokens.push(Token::Unknown(ch));
       }
     }
     tokens
