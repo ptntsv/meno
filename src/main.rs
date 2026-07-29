@@ -1,11 +1,8 @@
-use crate::lexer::Lexer;
-use crate::parser::Parser;
+use meno::parser::Parser;
+use meno::lexer::Lexer;
 use std::env;
 use std::fs;
 
-pub mod ast;
-pub mod lexer;
-pub mod parser;
 
 fn main() {
   let args: Vec<String> = env::args().collect();
@@ -14,9 +11,6 @@ fn main() {
   println!("With text:\n{content}");
   let mut lexer = Lexer::new(&content);
   let lxms = lexer.tokenize();
-  // for l in &lxms {
-  //   println!("{:?}", l);
-  // }
   let mut parser = Parser::new(&lxms);
   let ast = parser.parse_program();
   println!("{:?}", ast);
