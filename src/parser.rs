@@ -1,4 +1,5 @@
-use crate::ast::AstNode;
+use crate::ast::Program;
+use crate::ast::Stmt;
 use std::iter::Cloned;
 use std::iter::Peekable;
 use std::slice::Iter;
@@ -16,16 +17,47 @@ impl<'a> Parser<'a> {
   fn match_token(&mut self, expected: &Token) -> bool {
     self.strm.next_if_eq(&expected).is_some()
   }
-  fn expect_token(&mut self, expected: &Token) {
-    assert_eq!(self.strm.next().as_ref(), Some(expected));
+  fn expect_token(&mut self, expected: &Token) -> Token {
+    if let Some(tok) = self.strm.next_if_eq(expected) {
+      tok
+    } else {
+      panic!(
+        "Expected {0:?}, got {1:?},",
+        *expected,
+        self.strm.next().as_ref()
+      );
+    }
   }
   pub fn new(lexemes: &'a [lexer::Token]) -> Self {
     Parser {
       strm: lexemes.iter().cloned().peekable(),
     }
   }
-  pub fn parse_program(&mut self) -> AstNode {
-    AstNode::Expr(self.parse_expr())
+  pub fn parse_program(&mut self) -> Program {
+    let mut stmts = Vec::new();
+    stmts.push(self.parse_stmt());
+    while self.match_token(&Token::Semicolon) {
+      stmts.push(self.parse_stmt());
+    }
+    Program { stmts: stmts }
+  }
+  fn parse_stmt(&mut self) -> Stmt {
+    if self.match_token(&Token::Keyword("let".to_string())) {
+      let id = match self.strm.next() {
+        Some(Token::Identifier(id)) => id,
+        other => panic!("Expected identifier, got {other:?}"),
+      };
+      self.expect_token(&Token::EQ);
+      let rhs = self.parse_expr();
+      return Stmt::Assignment {
+        name_id: id,
+        rhs: Box::new(rhs),
+      };
+    }
+    Stmt::Assignment {
+      name_id: 0,
+      rhs: Box::new(Expr::Int(42)),
+    }
   }
   // E = T ('+'|'-' T)*
   fn parse_expr(&mut self) -> Expr {
@@ -93,5 +125,134 @@ impl<'a> Parser<'a> {
     } else {
       Expr::Int(42)
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::ast::BinaryOp::*;
+  use crate::ast::Expr::*;
+  use crate::ast::UnaryOp::*;
+  use crate::ast::*;
+  use crate::lexer::*;
+  fn _parse_expr(s: &str) -> Expr {
+    let mut lexer = Lexer::new(s);
+    let lxms = &lexer.tokenize();
+    let mut parser = Parser::new(lxms);
+    parser.parse_expr()
+  }
+  fn _parse_stmt(s: &str) -> Stmt {
+    let mut lexer = Lexer::new(s);
+    let lxms = &lexer.tokenize();
+    let mut parser = Parser::new(lxms);
+    parser.parse_stmt()
+  }
+  #[test]
+  fn int1() {
+    let s = "1";
+    match _parse_expr(s) {
+      Expr::Int(1) => (),
+      _ => panic!(),
+    }
+  }
+  #[test]
+  fn unary_int() {
+    let s = "-42";
+    let expected = Expr::Unary {
+      op: Neg,
+      child: Box::new(Expr::Int(42)),
+    };
+    assert_eq!(expected, _parse_expr(s));
+    let s = "--42";
+    let expected = Expr::Unary {
+      op: Neg,
+      child: Box::new(Expr::Unary {
+        op: Neg,
+        child: Box::new(Expr::Int(42)),
+      }),
+    };
+    assert_eq!(expected, _parse_expr(s));
+    let s = "-1-2";
+    let expected = Expr::Binary {
+      op: Sub,
+      left: Box::new(Expr::Unary {
+        op: Neg,
+        child: Box::new(Expr::Int(1)),
+      }),
+      right: Box::new(Expr::Int(2)),
+    };
+    assert_eq!(expected, _parse_expr(s));
+    let s = "-1--2";
+    let expected = Expr::Binary {
+      op: Sub,
+      left: Box::new(Expr::Unary {
+        op: Neg,
+        child: Box::new(Expr::Int(1)),
+      }),
+      right: Box::new(Expr::Unary {
+        op: Neg,
+        child: Box::new(Int(2)),
+      }),
+    };
+    assert_eq!(expected, _parse_expr(s));
+  }
+  #[test]
+  fn unary_group() {
+    let s = "-(1+2)";
+    let expected = Expr::Unary {
+      op: Neg,
+      child: Box::new(Expr::Binary {
+        op: Add,
+        left: Box::new(Expr::Int(1)),
+        right: Box::new(Expr::Int(2)),
+      }),
+    };
+    assert_eq!(expected, _parse_expr(s));
+  }
+  #[test]
+  fn precedence_test() {
+    let s = "1+2*3";
+    let expected = Expr::Binary {
+      op: Add,
+      left: Box::new(Int(1)),
+      right: Box::new(Expr::Binary {
+        op: Mul,
+        left: Box::new(Int(2)),
+        right: Box::new(Int(3)),
+      }),
+    };
+    assert_eq!(expected, _parse_expr(s));
+    let s = "(1+2)*3";
+    let expected = Expr::Binary {
+      op: Mul,
+      left: Box::new(Expr::Binary {
+        op: Add,
+        left: Box::new(Int(1)),
+        right: Box::new(Int(2)),
+      }),
+      right: Box::new(Int(3)),
+    };
+    assert_eq!(expected, _parse_expr(s));
+    let s = "1+(2+3)";
+    let expected = Expr::Binary {
+      op: Add,
+      left: Box::new(Int(1)),
+      right: Box::new(Expr::Binary {
+        op: Add,
+        left: Box::new(Int(2)),
+        right: Box::new(Int(3)),
+      }),
+    };
+    assert_eq!(expected, _parse_expr(s));
+  }
+  #[test]
+  fn assignment() {
+    let s = "let x = 13;";
+    let expected = Stmt::Assignment {
+      name_id: 0,
+      rhs: Box::new(Expr::Int(13)),
+    };
+    assert_eq!(expected, _parse_stmt(s))
   }
 }

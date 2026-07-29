@@ -3,13 +3,16 @@ use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
-  Word(String),
   Int(i32),
   Plus,
   Minus,
   Star,
   Slash,
-  Identifier(String),
+  Semicolon,
+  EQ,
+  LT, LTE,
+  GT, GTE,
+  Identifier(usize),
   Keyword(String),
   LParen,
   RParen,
@@ -18,12 +21,14 @@ pub enum Token {
 
 pub struct Lexer<'a> {
   strm: Peekable<Chars<'a>>,
+  symtable: Vec<String>,
 }
 
 impl<'a> Lexer<'a> {
   pub fn new(src: &'a str) -> Self {
     Lexer {
       strm: src.chars().peekable(),
+      symtable: Vec::<String>::new()
     }
   }
   fn next_until(&mut self, predicate: impl Fn(char) -> bool) -> String {
@@ -40,7 +45,7 @@ impl<'a> Lexer<'a> {
     self.next_until(|c: char| c.is_ascii_alphanumeric() || c == '_')
   }
   pub fn tokenize(&mut self) -> Vec<Token> {
-    let keywords : HashSet<&str> = HashSet::from(["for", "while", "if"]);
+    let keywords : HashSet<&str> = HashSet::from(["for", "while", "if", "let"]);
     let mut tokens: Vec<Token> = Vec::new();
     while let Some(ch) = self.strm.next() {
       if ch.is_whitespace() {
@@ -58,7 +63,8 @@ impl<'a> Lexer<'a> {
         if keywords.contains(name.as_str()) {
           tokens.push(Token::Keyword(name));
         } else {
-          tokens.push(Token::Identifier(name));
+          self.symtable.push(name);
+          tokens.push(Token::Identifier(self.symtable.len() - 1));
         }
       } else if ch == '+' {
         tokens.push(Token::Plus);
@@ -72,7 +78,9 @@ impl<'a> Lexer<'a> {
         tokens.push(Token::LParen);
       } else if ch == ')' {
         tokens.push(Token::RParen);
-      } else {
+      } else if ch == '=' {
+        tokens.push(Token::EQ);
+      }else {
         tokens.push(Token::Unknown(ch));
       }
     }
