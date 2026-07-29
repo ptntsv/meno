@@ -1,5 +1,6 @@
 use crate::ast::Program;
 use crate::ast::Stmt;
+use crate::lexer::Token::Identifier;
 use std::iter::Cloned;
 use std::iter::Peekable;
 use std::slice::Iter;
@@ -14,18 +15,19 @@ pub struct Parser<'a> {
   strm: Peekable<Cloned<Iter<'a, lexer::Token>>>,
 }
 impl<'a> Parser<'a> {
-  fn match_token(&mut self, expected: &Token) -> bool {
+  fn eat(&mut self, expected: &Token) -> bool {
     self.strm.next_if_eq(&expected).is_some()
   }
-  fn expect_token(&mut self, expected: &Token) -> Token {
-    if let Some(tok) = self.strm.next_if_eq(expected) {
-      tok
-    } else {
-      panic!(
-        "Expected {0:?}, got {1:?},",
-        *expected,
-        self.strm.next().as_ref()
-      );
+  fn expect(&mut self, expected: &Token) {
+    if self.strm.next_if_eq(expected).is_none() {
+      let got = self.strm.next();
+      panic!("Expected {expected:?}, got {got:?}");
+    }
+  }
+  fn expect_identifier(&mut self) -> usize {
+    match self.strm.next() {
+      Some(Token::Identifier(id)) => id,
+      other => panic!("Expected identifier, got {other:?}"),
     }
   }
   pub fn new(lexemes: &'a [lexer::Token]) -> Self {
@@ -35,38 +37,36 @@ impl<'a> Parser<'a> {
   }
   pub fn parse_program(&mut self) -> Program {
     let mut stmts = Vec::new();
-    stmts.push(self.parse_stmt());
-    while self.match_token(&Token::Semicolon) {
+    while let Some(tok) = self.strm.peek() {
+      if matches!(tok, Token::Semicolon) {
+        self.strm.next();
+        continue;
+      }
       stmts.push(self.parse_stmt());
     }
     Program { stmts: stmts }
   }
   fn parse_stmt(&mut self) -> Stmt {
-    if self.match_token(&Token::Keyword("let".to_string())) {
-      let id = match self.strm.next() {
-        Some(Token::Identifier(id)) => id,
-        other => panic!("Expected identifier, got {other:?}"),
-      };
-      self.expect_token(&Token::EQ);
+    let let_keyword = &Token::Keyword("let".to_string());
+    if self.eat(let_keyword) {
+      let id = self.expect_identifier();
+      self.expect(&Token::EQ);
       let rhs = self.parse_expr();
       return Stmt::Assignment {
         name_id: id,
         rhs: Box::new(rhs),
       };
     }
-    Stmt::Assignment {
-      name_id: 0,
-      rhs: Box::new(Expr::Int(42)),
-    }
+    panic!("Expected statement");
   }
   // E = T ('+'|'-' T)*
   fn parse_expr(&mut self) -> Expr {
     let mut root = self.parse_term();
     let mut op: BinaryOp;
     loop {
-      if self.match_token(&Token::Plus) {
+      if self.eat(&Token::Plus) {
         op = BinaryOp::Add;
-      } else if self.match_token(&Token::Minus) {
+      } else if self.eat(&Token::Minus) {
         op = BinaryOp::Sub;
       } else {
         break;
@@ -85,9 +85,9 @@ impl<'a> Parser<'a> {
     let mut root = self.parse_unary();
     let mut op: BinaryOp;
     loop {
-      if self.match_token(&Token::Star) {
+      if self.eat(&Token::Star) {
         op = BinaryOp::Mul;
-      } else if self.match_token(&Token::Slash) {
+      } else if self.eat(&Token::Slash) {
         op = BinaryOp::Div;
       } else {
         break;
@@ -103,7 +103,7 @@ impl<'a> Parser<'a> {
   }
   // U = -U | F
   fn parse_unary(&mut self) -> Expr {
-    if self.match_token(&Token::Minus) {
+    if self.eat(&Token::Minus) {
       let expr = self.parse_unary();
       Expr::Unary {
         op: UnaryOp::Neg,
@@ -115,9 +115,9 @@ impl<'a> Parser<'a> {
   }
   // F = Int | '(' E ')'
   fn parse_factor(&mut self) -> Expr {
-    if self.match_token(&Token::LParen) {
+    if self.eat(&Token::LParen) {
       let expr = self.parse_expr();
-      self.expect_token(&Token::RParen);
+      self.expect(&Token::RParen);
       expr
     } else if let Some(&Token::Int(x)) = self.strm.peek() {
       self.strm.next();

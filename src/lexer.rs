@@ -80,6 +80,8 @@ impl<'a> Lexer<'a> {
         tokens.push(Token::RParen);
       } else if ch == '=' {
         tokens.push(Token::EQ);
+      } else if ch == ';' {
+        tokens.push(Token::Semicolon);
       }else {
         tokens.push(Token::Unknown(ch));
       }

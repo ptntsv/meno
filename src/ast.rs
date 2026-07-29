@@ -28,7 +28,7 @@ pub enum Expr {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
   Assignment { name_id: usize, rhs: Box<Expr> },
-  Expr(Expr)
+  Expr(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
