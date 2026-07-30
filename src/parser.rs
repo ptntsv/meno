@@ -1,6 +1,9 @@
 use crate::ast::Program;
 use crate::ast::Stmt;
-use crate::lexer::Token::Identifier;
+use crate::lexer::Token::BoolType;
+use crate::lexer::Token::CharType;
+use crate::lexer::Token::IntType;
+use crate::lexer::Token::Let;
 use std::iter::Cloned;
 use std::iter::Peekable;
 use std::slice::Iter;
@@ -24,9 +27,15 @@ impl<'a> Parser<'a> {
       panic!("Expected {expected:?}, got {got:?}");
     }
   }
+  fn expect_type(&mut self) -> Token {
+    match self.strm.next() {
+      Some(tok @ (IntType | CharType | BoolType)) => tok,
+      other => panic!("Expected type, got {other:?}"),
+    }
+  }
   fn expect_identifier(&mut self) -> usize {
     match self.strm.next() {
-      Some(Token::Identifier(id)) => id,
+      Some(Token::Id(id)) => id,
       other => panic!("Expected identifier, got {other:?}"),
     }
   }
@@ -47,9 +56,11 @@ impl<'a> Parser<'a> {
     Program { stmts: stmts }
   }
   fn parse_stmt(&mut self) -> Stmt {
-    let let_keyword = &Token::Keyword("let".to_string());
-    if self.eat(let_keyword) {
+    if self.eat(&Let) {
       let id = self.expect_identifier();
+      if self.eat(&Token::Colon) {
+        let t = self.expect_type();
+      }
       self.expect(&Token::EQ);
       let rhs = self.parse_expr();
       return Stmt::Assignment {
@@ -119,7 +130,7 @@ impl<'a> Parser<'a> {
       let expr = self.parse_expr();
       self.expect(&Token::RParen);
       expr
-    } else if let Some(&Token::Int(x)) = self.strm.peek() {
+    } else if let Some(&Token::IntLit(x)) = self.strm.peek() {
       self.strm.next();
       Expr::Int(x)
     } else {
@@ -127,6 +138,8 @@ impl<'a> Parser<'a> {
     }
   }
 }
+
+// ========= UNIT-TESTS =========
 
 #[cfg(test)]
 mod tests {

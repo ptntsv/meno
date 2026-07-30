@@ -12,7 +12,7 @@ fn parse(s: &str) -> Program {
 }
 #[test]
 fn two_decls() {
-  let program = "let x = 1;let y = 2;";
+  let program = "let x = 1; let y = 2;";
   let program = parse(program);
   for stmt in &program.stmts {
     println!("{stmt:?}");

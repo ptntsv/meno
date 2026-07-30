@@ -1,19 +1,32 @@
+use std::collections::{HashMap, HashSet};
 use std::{iter::Peekable, str::Chars};
-use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
-  Int(i32),
+  IntLit(i32),
+  // chars
   Plus,
   Minus,
   Star,
   Slash,
+  Colon,
   Semicolon,
   EQ,
-  LT, LTE,
-  GT, GTE,
-  Identifier(usize),
-  Keyword(String),
+  LT,
+  LTE,
+  GT,
+  GTE,
+  // types
+  IntType,
+  CharType,
+  BoolType,
+  Id(usize),
+  // Keyword(String),
+  // keywords
+  Let,
+  If,
+  Else,
+  Def,
   LParen,
   RParen,
   Unknown(char),
@@ -28,7 +41,7 @@ impl<'a> Lexer<'a> {
   pub fn new(src: &'a str) -> Self {
     Lexer {
       strm: src.chars().peekable(),
-      symtable: Vec::<String>::new()
+      symtable: Vec::<String>::new(),
     }
   }
   fn next_until(&mut self, predicate: impl Fn(char) -> bool) -> String {
@@ -45,7 +58,16 @@ impl<'a> Lexer<'a> {
     self.next_until(|c: char| c.is_ascii_alphanumeric() || c == '_')
   }
   pub fn tokenize(&mut self) -> Vec<Token> {
-    let keywords : HashSet<&str> = HashSet::from(["for", "while", "if", "let"]);
+    let kw_to_tok = |s: &str| match s {
+      "let" => Some(Token::Let),
+      "def" => Some(Token::Def),
+      "if" => Some(Token::If),
+      "else" => Some(Token::Else),
+      "int" => Some(Token::IntType),
+      "char" => Some(Token::CharType),
+      "bool" => Some(Token::BoolType),
+      other => None,
+    };
     let mut tokens: Vec<Token> = Vec::new();
     while let Some(ch) = self.strm.next() {
       if ch.is_whitespace() {
@@ -55,16 +77,16 @@ impl<'a> Lexer<'a> {
         let rest = self.number();
         nat.push_str(&rest);
         let nat: i32 = nat.parse().expect("Can't parse {int_str}");
-        tokens.push(Token::Int(nat));
+        tokens.push(Token::IntLit(nat));
       } else if ch.is_alphabetic() {
         let mut name = String::from(ch);
         let rest = self.name();
         name.push_str(&rest);
-        if keywords.contains(name.as_str()) {
-          tokens.push(Token::Keyword(name));
+        if let Some(tok) = kw_to_tok(&name.as_str()) {
+          tokens.push(tok);
         } else {
           self.symtable.push(name);
-          tokens.push(Token::Identifier(self.symtable.len() - 1));
+          tokens.push(Token::Id(self.symtable.len() - 1));
         }
       } else if ch == '+' {
         tokens.push(Token::Plus);
@@ -82,7 +104,9 @@ impl<'a> Lexer<'a> {
         tokens.push(Token::EQ);
       } else if ch == ';' {
         tokens.push(Token::Semicolon);
-      }else {
+      } else if ch == ':' {
+        tokens.push(Token::Colon);
+      } else {
         tokens.push(Token::Unknown(ch));
       }
     }
