@@ -80,10 +80,37 @@ impl<'a> Parser<'a> {
         rhs: Box::new(rhs),
       };
     }
-    panic!("Expected statement");
+    Stmt::Expr(self.parse_expr())
   }
   fn parse_expr(&mut self) -> Expr {
-    self.parse_logical_or()
+    if self.eat(&Token::If) {
+      let cond = Box::new(self.parse_expr());
+      let then = Box::new(self.parse_block());
+      let x = self.strm.peek();
+      let mut otherwise: Option<Box<Expr>> = None;
+      if let Some(&Token::LCBrace) = self.strm.peek() {
+        otherwise = Some(Box::new(self.parse_block()));
+      }
+      Expr::If {
+        cond: cond,
+        tbranch: then,
+        fbranch: otherwise,
+      }
+    } else {
+      self.parse_logical_or()
+    }
+  }
+  fn parse_block(&mut self) -> Expr {
+    let mut content = Vec::new();
+    self.expect(&Token::LCBrace);
+    while Some(&Token::RCBrace) != self.strm.peek() {
+      if self.eat(&Token::Semicolon) {
+        continue;
+      }
+      content.push(self.parse_stmt());
+    }
+    self.expect(&Token::RCBrace);
+    Expr::Block { content: content }
   }
   fn parse_logical_or(&mut self) -> Expr {
     let mut root = self.parse_logical_and();
@@ -115,7 +142,6 @@ impl<'a> Parser<'a> {
     }
     root
   }
-  // C = C ('<' | '<=' | '>' | '>=' | '==') C | E
   // C = E (op E)*
   fn parse_comparison(&mut self) -> Expr {
     let mut root = self.parse_aexpr();
@@ -209,8 +235,6 @@ impl<'a> Parser<'a> {
       Some(Token::TrueLit) => Expr::True,
       Some(Token::FalseLit) => Expr::False,
       Some(Token::IntLit(x)) => Expr::Int(x),
-      // Some(Token::If) => {
-      // }
       other => panic!("Expected factor but got {other:?}"),
     }
   }
@@ -420,5 +444,73 @@ mod tests {
       right: Box::new(Expr::True),
     };
     assert_eq!(_parse_expr(s), expected);
+    let s = "true == false && false";
+    let expected = Expr::Binary {
+      op: BinaryOp::And,
+      left: Box::new(Expr::Binary {
+        op: BinaryOp::Eq,
+        left: Box::new(Expr::True),
+        right: Box::new(Expr::False),
+      }),
+      right: Box::new(Expr::False),
+    };
+    assert_eq!(_parse_expr(s), expected);
+  }
+  #[test]
+  fn if_simple() {
+    let s = "if 1 < 2 { 2; } { 3; }";
+    let exp = Expr::If {
+      cond: Box::new(Expr::Binary {
+        op: BinaryOp::Lt,
+        left: Box::new(Expr::Int(1)),
+        right: Box::new(Expr::Int(2)),
+      }),
+      tbranch: Box::new(Expr::Block {
+        content: vec![Stmt::Expr(Expr::Int(2))],
+      }),
+      fbranch: Some(Box::new(Expr::Block {
+        content: vec![Stmt::Expr(Expr::Int(3))],
+      })),
+    };
+    assert_eq!(_parse_expr(s), exp);
+  }
+  #[test]
+  fn no_then_if() {
+    let s = "if 1 < 2 { 2; }";
+    let exp = Expr::If {
+      cond: Box::new(Expr::Binary {
+        op: BinaryOp::Lt,
+        left: Box::new(Expr::Int(1)),
+        right: Box::new(Expr::Int(2)),
+      }),
+      tbranch: Box::new(Expr::Block {
+        content: vec![Stmt::Expr(Expr::Int(2))],
+      }),
+      fbranch: None,
+    };
+    assert_eq!(_parse_expr(s), exp);
+    let s = "if 1 < 2 {
+      let x: int = 42;
+      2;
+    }";
+    let exp = Expr::If {
+      cond: Box::new(Expr::Binary {
+        op: BinaryOp::Lt,
+        left: Box::new(Expr::Int(1)),
+        right: Box::new(Expr::Int(2)),
+      }),
+      tbranch: Box::new(Expr::Block {
+        content: vec![
+          Stmt::Decl {
+            name_id: 0,
+            decl_type: Some(Type::Int),
+            rhs: Box::new(Expr::Int(42)),
+          },
+          Stmt::Expr(Expr::Int(2)),
+        ],
+      }),
+      fbranch: None,
+    };
+    assert_eq!(_parse_expr(s), exp);
   }
 }

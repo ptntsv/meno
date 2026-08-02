@@ -2,7 +2,7 @@ use crate::ast::Program;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
-  Int, Bool, Char
+  Int, Bool, Char, Unit
 }
 
 #[derive(Debug, Clone)]

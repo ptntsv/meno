@@ -40,7 +40,7 @@ pub enum Expr {
   If {
     cond: Box<Expr>,
     tbranch: Box<Expr>,
-    fbranch: Box<Expr>,
+    fbranch: Option<Box<Expr>>,
   },
 }
 

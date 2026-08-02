@@ -21,6 +21,8 @@ pub enum Token {
   GTE,
   LParen,
   RParen,
+  LCBrace,
+  RCBrace,
 
   LogicOr,
   LogicAnd,
@@ -31,6 +33,7 @@ pub enum Token {
   IntType,
   CharType,
   BoolType,
+  UnitType,
   Id(usize),
 
   // keywords
@@ -75,6 +78,7 @@ impl<'a> Lexer<'a> {
       "int" => Some(Token::IntType),
       "char" => Some(Token::CharType),
       "bool" => Some(Token::BoolType),
+      "unit" => Some(Token::UnitType),
       "false" => Some(Token::FalseLit),
       "true" => Some(Token::TrueLit),
       _ => None,
@@ -109,6 +113,8 @@ impl<'a> Lexer<'a> {
           ')' => Token::RParen,
           ';' => Token::Semicolon,
           ':' => Token::Colon,
+          '{' => Token::LCBrace,
+          '}' => Token::RCBrace,
           '=' => {
             if self.strm.next_if_eq(&'=').is_some() {
               Token::EQEQ
