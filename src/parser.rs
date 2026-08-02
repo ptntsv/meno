@@ -86,16 +86,17 @@ impl<'a> Parser<'a> {
     if self.eat(&Token::If) {
       let cond = Box::new(self.parse_expr());
       let then = Box::new(self.parse_block());
-      let x = self.strm.peek();
       let mut otherwise: Option<Box<Expr>> = None;
-      if let Some(&Token::LCBrace) = self.strm.peek() {
-        otherwise = Some(Box::new(self.parse_block()));
+      if self.eat(&Token::Else) {
+        otherwise = Some(Box::new(self.parse_expr()));
       }
       Expr::If {
         cond: cond,
         tbranch: then,
         fbranch: otherwise,
       }
+    } else if let Some(&Token::LCBrace) = self.strm.peek() {
+      self.parse_block()
     } else {
       self.parse_logical_or()
     }
@@ -458,7 +459,7 @@ mod tests {
   }
   #[test]
   fn if_simple() {
-    let s = "if 1 < 2 { 2; } { 3; }";
+    let s = "if 1 < 2 { 2; } else { 3; }";
     let exp = Expr::If {
       cond: Box::new(Expr::Binary {
         op: BinaryOp::Lt,
@@ -510,6 +511,45 @@ mod tests {
         ],
       }),
       fbranch: None,
+    };
+    assert_eq!(_parse_expr(s), exp);
+  }
+  #[test]
+  fn nested_if() {
+    let s = "
+    if 1 == 1 {
+      2;
+    } else if 1 < 2 {
+      3;
+    } else {
+      5;
+    };";
+    let b1 = Box::new(Expr::Block {
+      content: vec![Stmt::Expr(Expr::Int(2))],
+    });
+    let b2 = Box::new(Expr::Block {
+      content: vec![Stmt::Expr(Expr::Int(3))],
+    });
+    let b3 = Box::new(Expr::Block {
+      content: vec![Stmt::Expr(Expr::Int(5))],
+    });
+    let elseif = Box::new(Expr::If {
+      cond: Box::new(Expr::Binary {
+        op: BinaryOp::Lt,
+        left: Box::new(Expr::Int(1)),
+        right: Box::new(Expr::Int(2)),
+      }),
+      tbranch: b2,
+      fbranch: Some(b3),
+    });
+    let exp = Expr::If {
+      cond: Box::new(Expr::Binary {
+        op: BinaryOp::Eq,
+        left: Box::new(Expr::Int(1)),
+        right: Box::new(Expr::Int(1)),
+      }),
+      tbranch: b1,
+      fbranch: Some(elseif),
     };
     assert_eq!(_parse_expr(s), exp);
   }
