@@ -1,9 +1,18 @@
+use crate::type_checker::Type;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
   Add,
   Sub,
   Mul,
   Div,
+  Lt,
+  Lte,
+  Gt,
+  Gte,
+  Eq,
+  Or,
+  And,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -14,6 +23,8 @@ pub enum UnaryOp {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
   Int(i32),
+  False,
+  True,
   Unary {
     op: UnaryOp,
     child: Box<Expr>,
@@ -23,15 +34,32 @@ pub enum Expr {
     left: Box<Expr>,
     right: Box<Expr>,
   },
+  Block {
+    content: Vec<Stmt>,
+  },
+  If {
+    cond: Box<Expr>,
+    tbranch: Box<Expr>,
+    fbranch: Box<Expr>,
+  },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-  Assignment { name_id: usize, rhs: Box<Expr> },
+  Decl {
+    name_id: usize,
+    decl_type: Option<Type>,
+    rhs: Box<Expr>,
+  },
+  Assignment {
+    name_id: usize,
+    rhs: Box<Expr>,
+  },
   Expr(Expr),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
-  pub stmts: Vec<Stmt>
+  pub stmts: Vec<Stmt>,
+  pub idtable: Vec<String>,
 }

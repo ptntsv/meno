@@ -11,7 +11,7 @@ fn main() {
   println!("With text:\n{content}");
   let mut lexer = Lexer::new(&content);
   let lxms = lexer.tokenize();
-  let mut parser = Parser::new(&lxms);
+  let parser = Parser::new(&lxms, lexer.idtable);
   let ast = parser.parse_program();
   println!("{:?}", ast);
 }

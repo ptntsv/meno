@@ -1,9 +1,11 @@
-use std::collections::{HashMap, HashSet};
 use std::{iter::Peekable, str::Chars};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
   IntLit(i32),
+  FalseLit,
+  TrueLit,
+
   // chars
   Plus,
   Minus,
@@ -11,37 +13,44 @@ pub enum Token {
   Slash,
   Colon,
   Semicolon,
+  EQEQ,
   EQ,
   LT,
   LTE,
   GT,
   GTE,
+  LParen,
+  RParen,
+
+  LogicOr,
+  LogicAnd,
+  BitOr,
+  BitAnd,
+
   // types
   IntType,
   CharType,
   BoolType,
   Id(usize),
-  // Keyword(String),
+
   // keywords
   Let,
   If,
   Else,
   Def,
-  LParen,
-  RParen,
   Unknown(char),
 }
 
 pub struct Lexer<'a> {
   strm: Peekable<Chars<'a>>,
-  symtable: Vec<String>,
+  pub idtable: Vec<String>,
 }
 
 impl<'a> Lexer<'a> {
   pub fn new(src: &'a str) -> Self {
     Lexer {
       strm: src.chars().peekable(),
-      symtable: Vec::<String>::new(),
+      idtable: Vec::<String>::new(),
     }
   }
   fn next_until(&mut self, predicate: impl Fn(char) -> bool) -> String {
@@ -66,7 +75,9 @@ impl<'a> Lexer<'a> {
       "int" => Some(Token::IntType),
       "char" => Some(Token::CharType),
       "bool" => Some(Token::BoolType),
-      other => None,
+      "false" => Some(Token::FalseLit),
+      "true" => Some(Token::TrueLit),
+      _ => None,
     };
     let mut tokens: Vec<Token> = Vec::new();
     while let Some(ch) = self.strm.next() {
@@ -85,29 +96,57 @@ impl<'a> Lexer<'a> {
         if let Some(tok) = kw_to_tok(&name.as_str()) {
           tokens.push(tok);
         } else {
-          self.symtable.push(name);
-          tokens.push(Token::Id(self.symtable.len() - 1));
+          self.idtable.push(name);
+          tokens.push(Token::Id(self.idtable.len() - 1));
         }
-      } else if ch == '+' {
-        tokens.push(Token::Plus);
-      } else if ch == '-' {
-        tokens.push(Token::Minus);
-      } else if ch == '*' {
-        tokens.push(Token::Star);
-      } else if ch == '/' {
-        tokens.push(Token::Slash);
-      } else if ch == '(' {
-        tokens.push(Token::LParen);
-      } else if ch == ')' {
-        tokens.push(Token::RParen);
-      } else if ch == '=' {
-        tokens.push(Token::EQ);
-      } else if ch == ';' {
-        tokens.push(Token::Semicolon);
-      } else if ch == ':' {
-        tokens.push(Token::Colon);
       } else {
-        tokens.push(Token::Unknown(ch));
+        let t = match ch {
+          '+' => Token::Plus,
+          '-' => Token::Minus,
+          '*' => Token::Star,
+          '/' => Token::Slash,
+          '(' => Token::LParen,
+          ')' => Token::RParen,
+          ';' => Token::Semicolon,
+          ':' => Token::Colon,
+          '=' => {
+            if self.strm.next_if_eq(&'=').is_some() {
+              Token::EQEQ
+            } else {
+              Token::EQ
+            }
+          }
+          '<' => {
+            if self.strm.next_if_eq(&'=').is_some() {
+              Token::LTE
+            } else {
+              Token::LT
+            }
+          }
+          '>' => {
+            if self.strm.next_if_eq(&'=').is_some() {
+              Token::GTE
+            } else {
+              Token::GT
+            }
+          }
+          '&' => {
+            if self.strm.next_if_eq(&'&').is_some() {
+              Token::LogicAnd
+            } else {
+              Token::BitAnd
+            }
+          }
+          '|' => {
+            if self.strm.next_if_eq(&'|').is_some() {
+              Token::LogicOr
+            } else {
+              Token::BitOr
+            }
+          }
+          other => Token::Unknown(other),
+        };
+        tokens.push(t);
       }
     }
     tokens

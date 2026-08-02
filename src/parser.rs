@@ -1,14 +1,14 @@
+use crate::ast::BinaryOp;
 use crate::ast::Program;
 use crate::ast::Stmt;
 use crate::lexer::Token::BoolType;
 use crate::lexer::Token::CharType;
 use crate::lexer::Token::IntType;
-use crate::lexer::Token::Let;
+use crate::type_checker::Type;
 use std::iter::Cloned;
 use std::iter::Peekable;
 use std::slice::Iter;
 
-use crate::ast::BinaryOp;
 use crate::ast::Expr;
 use crate::ast::UnaryOp;
 use crate::lexer;
@@ -16,6 +16,7 @@ use crate::lexer::Token;
 
 pub struct Parser<'a> {
   strm: Peekable<Cloned<Iter<'a, lexer::Token>>>,
+  idtable: Vec<String>,
 }
 impl<'a> Parser<'a> {
   fn eat(&mut self, expected: &Token) -> bool {
@@ -39,12 +40,13 @@ impl<'a> Parser<'a> {
       other => panic!("Expected identifier, got {other:?}"),
     }
   }
-  pub fn new(lexemes: &'a [lexer::Token]) -> Self {
+  pub fn new(lexemes: &'a [lexer::Token], table: Vec<String>) -> Self {
     Parser {
       strm: lexemes.iter().cloned().peekable(),
+      idtable: table,
     }
   }
-  pub fn parse_program(&mut self) -> Program {
+  pub fn parse_program(mut self) -> Program {
     let mut stmts = Vec::new();
     while let Some(tok) = self.strm.peek() {
       if matches!(tok, Token::Semicolon) {
@@ -53,25 +55,97 @@ impl<'a> Parser<'a> {
       }
       stmts.push(self.parse_stmt());
     }
-    Program { stmts: stmts }
+    Program {
+      stmts: stmts,
+      idtable: self.idtable,
+    }
   }
   fn parse_stmt(&mut self) -> Stmt {
-    if self.eat(&Let) {
+    if self.eat(&Token::Let) {
       let id = self.expect_identifier();
+      let mut maybe_type = None;
       if self.eat(&Token::Colon) {
-        let t = self.expect_type();
+        maybe_type = match self.expect_type() {
+          Token::IntType => Some(Type::Int),
+          Token::CharType => Some(Type::Char),
+          Token::BoolType => Some(Type::Bool),
+          other => panic!("Expected type but got {other:?}"),
+        };
       }
       self.expect(&Token::EQ);
-      let rhs = self.parse_expr();
-      return Stmt::Assignment {
+      let rhs = self.parse_comparison();
+      return Stmt::Decl {
         name_id: id,
+        decl_type: maybe_type,
         rhs: Box::new(rhs),
       };
     }
     panic!("Expected statement");
   }
-  // E = T ('+'|'-' T)*
   fn parse_expr(&mut self) -> Expr {
+    self.parse_logical_or()
+  }
+  fn parse_logical_or(&mut self) -> Expr {
+    let mut root = self.parse_logical_and();
+    loop {
+      if self.eat(&Token::LogicOr) {
+        root = Expr::Binary {
+          op: BinaryOp::Or,
+          left: Box::new(root),
+          right: Box::new(self.parse_logical_and()),
+        };
+      } else {
+        break;
+      }
+    }
+    root
+  }
+  fn parse_logical_and(&mut self) -> Expr {
+    let mut root = self.parse_comparison();
+    loop {
+      if self.eat(&Token::LogicAnd) {
+        root = Expr::Binary {
+          op: BinaryOp::And,
+          left: Box::new(root),
+          right: Box::new(self.parse_comparison()),
+        };
+      } else {
+        break;
+      }
+    }
+    root
+  }
+  // C = C ('<' | '<=' | '>' | '>=' | '==') C | E
+  // C = E (op E)*
+  fn parse_comparison(&mut self) -> Expr {
+    let mut root = self.parse_aexpr();
+    let tok_to_op = |tok: Option<&Token>| match tok {
+      Some(Token::LT) => Some(BinaryOp::Lt),
+      Some(Token::LTE) => Some(BinaryOp::Lte),
+      Some(Token::GT) => Some(BinaryOp::Gt),
+      Some(Token::GTE) => Some(BinaryOp::Gte),
+      Some(Token::EQEQ) => Some(BinaryOp::Eq),
+      _ => None,
+    };
+    let mut op: BinaryOp;
+    loop {
+      if let Some(_op) = tok_to_op(self.strm.peek()) {
+        self.strm.next();
+        op = _op;
+      } else {
+        break;
+      }
+      let right = self.parse_aexpr();
+      root = Expr::Binary {
+        op: op,
+        left: Box::new(root),
+        right: Box::new(right),
+      };
+    }
+    root
+  }
+  // E = T ('+'|'-' T)*
+  fn parse_aexpr(&mut self) -> Expr {
     let mut root = self.parse_term();
     let mut op: BinaryOp;
     loop {
@@ -124,17 +198,20 @@ impl<'a> Parser<'a> {
       self.parse_factor()
     }
   }
-  // F = Int | '(' E ')'
+  // F = Int | '(' C ')'
   fn parse_factor(&mut self) -> Expr {
-    if self.eat(&Token::LParen) {
-      let expr = self.parse_expr();
-      self.expect(&Token::RParen);
-      expr
-    } else if let Some(&Token::IntLit(x)) = self.strm.peek() {
-      self.strm.next();
-      Expr::Int(x)
-    } else {
-      Expr::Int(42)
+    match self.strm.next() {
+      Some(Token::LParen) => {
+        let expr = self.parse_comparison();
+        self.expect(&Token::RParen);
+        expr
+      }
+      Some(Token::TrueLit) => Expr::True,
+      Some(Token::FalseLit) => Expr::False,
+      Some(Token::IntLit(x)) => Expr::Int(x),
+      // Some(Token::If) => {
+      // }
+      other => panic!("Expected factor but got {other:?}"),
     }
   }
 }
@@ -152,13 +229,13 @@ mod tests {
   fn _parse_expr(s: &str) -> Expr {
     let mut lexer = Lexer::new(s);
     let lxms = &lexer.tokenize();
-    let mut parser = Parser::new(lxms);
+    let mut parser = Parser::new(lxms, lexer.idtable);
     parser.parse_expr()
   }
   fn _parse_stmt(s: &str) -> Stmt {
     let mut lexer = Lexer::new(s);
     let lxms = &lexer.tokenize();
-    let mut parser = Parser::new(lxms);
+    let mut parser = Parser::new(lxms, lexer.idtable);
     parser.parse_stmt()
   }
   #[test]
@@ -260,12 +337,88 @@ mod tests {
     assert_eq!(expected, _parse_expr(s));
   }
   #[test]
-  fn assignment() {
-    let s = "let x = 13;";
-    let expected = Stmt::Assignment {
+  fn decl() {
+    let s = "let x: int = 13;";
+    let expected = Stmt::Decl {
       name_id: 0,
+      decl_type: Some(Type::Int),
       rhs: Box::new(Expr::Int(13)),
     };
     assert_eq!(expected, _parse_stmt(s))
+  }
+  #[test]
+  fn lt_test() {
+    let s = "1 < 2";
+    let expected = Expr::Binary {
+      op: BinaryOp::Lt,
+      left: Box::new(Expr::Int(1)),
+      right: Box::new(Expr::Int(2)),
+    };
+    assert_eq!(_parse_expr(s), expected);
+    let s = "1 < (2 + 3)";
+    let expected = Expr::Binary {
+      op: BinaryOp::Lt,
+      left: Box::new(Expr::Int(1)),
+      right: Box::new(Expr::Binary {
+        op: BinaryOp::Add,
+        left: Box::new(Expr::Int(2)),
+        right: Box::new(Expr::Int(3)),
+      }),
+    };
+    assert_eq!(_parse_expr(s), expected);
+  }
+  #[test]
+  fn comp_precedence_test() {
+    let s = "1 < 2 + 3";
+    let expected = Expr::Binary {
+      op: BinaryOp::Lt,
+      left: Box::new(Expr::Int(1)),
+      right: Box::new(Expr::Binary {
+        op: BinaryOp::Add,
+        left: Box::new(Expr::Int(2)),
+        right: Box::new(Expr::Int(3)),
+      }),
+    };
+    assert_eq!(_parse_expr(s), expected);
+    let s = "1 < 2 || 3 > 5";
+    let expected = Expr::Binary {
+      op: BinaryOp::Or,
+      left: Box::new(Expr::Binary {
+        op: BinaryOp::Lt,
+        left: Box::new(Expr::Int(1)),
+        right: Box::new(Expr::Int(2)),
+      }),
+      right: Box::new(Expr::Binary {
+        op: BinaryOp::Gt,
+        left: Box::new(Expr::Int(3)),
+        right: Box::new(Expr::Int(5)),
+      }),
+    };
+    assert_eq!(_parse_expr(s), expected);
+  }
+  #[test]
+  fn logic_precedence_test() {
+    let s = "true || false && true";
+    let expected = Expr::Binary {
+      op: BinaryOp::Or,
+      left: Box::new(Expr::True),
+      right: Box::new(Expr::Binary {
+        op: BinaryOp::And,
+        left: Box::new(Expr::False),
+        right: Box::new(Expr::True),
+      }),
+    };
+    assert_eq!(_parse_expr(s), expected);
+    let s = "true || false || true";
+    let expected = Expr::Binary {
+      op: BinaryOp::Or,
+      left: Box::new(Expr::Binary {
+        op: BinaryOp::Or,
+        left: Box::new(Expr::True),
+        right: Box::new(Expr::False),
+      }),
+      right: Box::new(Expr::True),
+    };
+    assert_eq!(_parse_expr(s), expected);
   }
 }
