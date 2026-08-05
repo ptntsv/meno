@@ -39,8 +39,8 @@ pub enum Expr {
   },
   If {
     cond: Box<Expr>,
-    tbranch: Box<Expr>,
-    fbranch: Option<Box<Expr>>,
+    tbr: Box<Expr>,
+    fbr: Option<Box<Expr>>,
   },
 }
 

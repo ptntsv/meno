@@ -135,8 +135,8 @@ impl Parser {
     }
     Expr::If {
       cond: cond,
-      tbranch: then,
-      fbranch: otherwise,
+      tbr: then,
+      fbr: otherwise,
     }
   }
   fn parse_expr(&mut self) -> Expr {
@@ -513,10 +513,10 @@ mod tests {
         left: Box::new(Expr::ConstInt(1)),
         right: Box::new(Expr::ConstInt(2)),
       }),
-      tbranch: Box::new(Expr::Block {
+      tbr: Box::new(Expr::Block {
         content: vec![Stmt::Expr(Expr::ConstInt(2))],
       }),
-      fbranch: Some(Box::new(Expr::Block {
+      fbr: Some(Box::new(Expr::Block {
         content: vec![Stmt::Expr(Expr::ConstInt(3))],
       })),
     };
@@ -531,10 +531,10 @@ mod tests {
         left: Box::new(Expr::ConstInt(1)),
         right: Box::new(Expr::ConstInt(2)),
       }),
-      tbranch: Box::new(Expr::Block {
+      tbr: Box::new(Expr::Block {
         content: vec![Stmt::Expr(Expr::ConstInt(2))],
       }),
-      fbranch: None,
+      fbr: None,
     };
     assert_eq!(_parse_expr(s), exp);
     let s = "if 1 < 2 {
@@ -547,7 +547,7 @@ mod tests {
         left: Box::new(Expr::ConstInt(1)),
         right: Box::new(Expr::ConstInt(2)),
       }),
-      tbranch: Box::new(Expr::Block {
+      tbr: Box::new(Expr::Block {
         content: vec![
           Stmt::Decl {
             name_id: 0,
@@ -557,7 +557,7 @@ mod tests {
           Stmt::Expr(Expr::ConstInt(2)),
         ],
       }),
-      fbranch: None,
+      fbr: None,
     };
     assert_eq!(_parse_expr(s), exp);
   }
@@ -586,8 +586,8 @@ mod tests {
         left: Box::new(Expr::ConstInt(1)),
         right: Box::new(Expr::ConstInt(2)),
       }),
-      tbranch: b2,
-      fbranch: Some(b3),
+      tbr: b2,
+      fbr: Some(b3),
     });
     let exp = Expr::If {
       cond: Box::new(Expr::Binary {
@@ -595,8 +595,8 @@ mod tests {
         left: Box::new(Expr::ConstInt(1)),
         right: Box::new(Expr::ConstInt(1)),
       }),
-      tbranch: b1,
-      fbranch: Some(elseif),
+      tbr: b1,
+      fbr: Some(elseif),
     };
     assert_eq!(_parse_expr(s), exp);
   }
@@ -639,10 +639,10 @@ mod tests {
     let s = "x = if true { false; } else { true; } && false; ";
     let _if = Expr::If {
       cond: Box::new(Expr::ConstBool(true)),
-      tbranch: Box::new(Expr::Block {
+      tbr: Box::new(Expr::Block {
         content: vec![Stmt::Expr(Expr::ConstBool(false))],
       }),
-      fbranch: Some(Box::new(Expr::Block {
+      fbr: Some(Box::new(Expr::Block {
         content: vec![Stmt::Expr(Expr::ConstBool(true))],
       })),
     };

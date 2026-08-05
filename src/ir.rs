@@ -1,23 +1,24 @@
 use crate::ast;
 
 type Reg = usize;
-type Label = usize;
+type LabelId = usize;
 
 #[derive(Debug, Clone, PartialEq)]
-enum IrVal {
+pub enum IrVal {
   Reg(Reg),
   ConstInt(i32),
-  Var(usize),
   ConstBool(bool),
+  ConstUnit,
+  Var(usize),
 }
 #[derive(Debug, Clone, PartialEq)]
-enum BinaryOp {
+pub enum BinaryOp {
   Add,
   Mul,
   And,
 }
 #[derive(Debug, Clone, PartialEq)]
-enum IrDest {
+pub enum IrDest {
   Reg(Reg),
   Var(usize),
 }
@@ -33,11 +34,11 @@ pub enum IrInst {
     dest: IrDest,
     src: IrVal,
   },
-  Jmp(Label),
-  CondJmp {
-    cond: Reg,
-    tlabel: Label,
-    flabel: Label,
+  Label(LabelId),
+  Jmp(LabelId),
+  JmpIfFalse {
+    cond: IrDest,
+    jmp_to: LabelId,
   },
 }
 
@@ -54,7 +55,7 @@ pub struct IrProgram {
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrEmitter {
   next_reg: Reg,
-  next_label: Label,
+  next_label: LabelId,
 }
 
 impl IrEmitter {
@@ -68,33 +69,82 @@ impl IrEmitter {
     self.next_reg += 1;
     self.next_reg - 1
   }
-  fn new_label(&mut self) -> Label {
+  fn new_label(&mut self) -> LabelId {
     self.next_label += 1;
     self.next_label - 1
   }
   fn emit(&mut self, expr: &ast::Expr, instrs: &mut Vec<IrInst>) -> IrVal {
-    let node2op = |tok: &ast::BinaryOp| match tok {
+    match expr {
+      ast::Expr::ConstInt(x) => IrVal::ConstInt(*x),
+      ast::Expr::ConstBool(b) => IrVal::ConstBool(*b),
+      ast::Expr::Var(id) => IrVal::Var(*id),
+      ast::Expr::Binary { op, left, right } => self.emit_binary(op, left, right, instrs),
+      ast::Expr::If { cond, tbr, fbr } => self.emit_if(cond, tbr, fbr, instrs),
+      _ => IrVal::Reg(67),
+    }
+  }
+  fn emit_if(
+    &mut self,
+    cond: &Box<ast::Expr>,
+    tbr: &Box<ast::Expr>,
+    fbr: &Option<Box<ast::Expr>>,
+    instrs: &mut Vec<IrInst>,
+  ) -> IrVal {
+    let ret_val_r = self.new_reg();
+    let cond_r = IrDest::Reg(self.new_reg());
+    let cond_instr = IrInst::Assign {
+      dest: cond_r.clone(),
+      src: self.emit(&*cond, instrs),
+    };
+    instrs.push(cond_instr);
+    let else_label = self.new_label();
+    let merge_label = self.new_label();
+    let jmp_if_false_instr = IrInst::JmpIfFalse {
+      cond: cond_r.clone(),
+      jmp_to: else_label.clone(),
+    };
+    instrs.push(jmp_if_false_instr);
+    let tb_r = self.emit(&**tbr, instrs);
+    instrs.push(IrInst::Assign {
+      dest: IrDest::Reg(ret_val_r.clone()),
+      src: tb_r,
+    });
+    let jmp_merge_instr = IrInst::Jmp(merge_label);
+    instrs.push(jmp_merge_instr);
+    instrs.push(IrInst::Label(else_label.clone()));
+    if let Some(_fbr) = fbr {
+      let fb_r = self.emit(&**_fbr, instrs);
+      instrs.push(IrInst::Assign {
+        dest: IrDest::Reg(ret_val_r.clone()),
+        src: fb_r,
+      });
+    } else {
+    }
+    instrs.push(IrInst::Label(merge_label.clone()));
+    IrVal::Reg(ret_val_r)
+  }
+  fn emit_binary(
+    &mut self,
+    op: &ast::BinaryOp,
+    left: &Box<ast::Expr>,
+    right: &Box<ast::Expr>,
+    instrs: &mut Vec<IrInst>,
+  ) -> IrVal {
+    let op_map = |tok: &ast::BinaryOp| match tok {
       ast::BinaryOp::Add => BinaryOp::Add,
       ast::BinaryOp::Mul => BinaryOp::Mul,
       ast::BinaryOp::And => BinaryOp::And,
       _ => todo!(),
     };
-    match expr {
-      ast::Expr::ConstInt(x) => IrVal::ConstInt(*x),
-      ast::Expr::Var(id) => IrVal::Var(*id),
-      ast::Expr::Binary { op, left, right } => {
-        let lhs = self.new_reg();
-        let aux_inst = IrInst::Binary {
-          dest: IrDest::Reg(lhs),
-          op: node2op(&op),
-          left: self.emit(&*left, instrs),
-          right: self.emit(&*right, instrs),
-        };
-        instrs.push(aux_inst);
-        IrVal::Reg(lhs)
-      }
-      _ => IrVal::Reg(67),
-    }
+    let lhs = self.new_reg();
+    let aux_inst = IrInst::Binary {
+      dest: IrDest::Reg(lhs),
+      op: op_map(&op),
+      left: self.emit(&*left, instrs),
+      right: self.emit(&*right, instrs),
+    };
+    instrs.push(aux_inst);
+    IrVal::Reg(lhs)
   }
   pub fn emit_ir(&mut self, program: &ast::Program) -> Vec<IrInst> {
     let mut ir: Vec<IrInst> = Vec::new();
@@ -135,6 +185,8 @@ mod tests {
     emitter.emit_ir(&program)
   }
 
+  // TODO:
+  // - IR generation for simple assignments [x]
   #[test]
   fn silly_ir() {
     let s = "x = 1;";
@@ -152,6 +204,8 @@ mod tests {
     }];
     assert_eq!(emit_ir(s), ir);
   }
+  // TODO:
+  // - IR generation for exprs [x]
   #[test]
   fn silly_exprs_ir() {
     let s = "x = 1 + 2;";
@@ -183,7 +237,18 @@ mod tests {
     ];
     assert_eq!(emit_ir(s), ir);
   }
-  // TODO:
-  // - IR generation for simple assignments [x]
-  // - IR generation for exprs [x]
+  #[test]
+  fn cond_ir() {
+    let s = "
+      let x = false;
+      if x {
+        x = 2;
+      } else {
+        x = 3;
+      };
+    ";
+    let x = emit_ir(s);
+    println!("{x:?}");
+    assert!(1 == 2);
+  }
 }
