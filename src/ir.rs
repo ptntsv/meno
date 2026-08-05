@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::ast;
 
 type Reg = usize;
@@ -9,7 +11,18 @@ pub enum IrVal {
   ConstInt(i32),
   ConstBool(bool),
   ConstUnit,
-  Var(usize),
+  Var(String),
+}
+impl fmt::Display for IrVal {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      &IrVal::Reg(n) => write!(f, "%{n}"),
+      &IrVal::ConstInt(x) => write!(f, "{x}"),
+      &IrVal::ConstBool(b) => write!(f, "{b:?}"),
+      &IrVal::ConstUnit => write!(f, "()"),
+      IrVal::Var(name) => write!(f, "{name}"),
+    }
+  }
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -17,10 +30,27 @@ pub enum BinaryOp {
   Mul,
   And,
 }
+impl fmt::Display for BinaryOp {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      &BinaryOp::Add => write!(f, "add"),
+      &BinaryOp::Mul => write!(f, "mul"),
+      &BinaryOp::And => write!(f, "and"),
+    }
+  }
+}
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrDest {
   Reg(Reg),
-  Var(usize),
+  Var(String),
+}
+impl fmt::Display for IrDest {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      &IrDest::Reg(n) => write!(f, "%{n}"),
+      IrDest::Var(name) => write!(f, "{name}"),
+    }
+  }
 }
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrInst {
@@ -42,6 +72,23 @@ pub enum IrInst {
   },
 }
 
+impl fmt::Display for IrInst {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      IrInst::Label(n) => write!(f, ".label{n}:\n"),
+      IrInst::Assign { dest, src } => write!(f, "  {dest} = {src}\n"),
+      IrInst::Binary {
+        dest,
+        op,
+        left,
+        right,
+      } => write!(f, "  {dest} = {op} {left} {right}\n"),
+      IrInst::Jmp(n) => write!(f, "  jmp .label{n}\n"),
+      IrInst::JmpIfFalse { cond, jmp_to } => write!(f, "  jmp_if_false {cond} .label{jmp_to}\n"),
+    }
+  }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrFunction {
   pub instr: Vec<IrInst>,
@@ -54,14 +101,16 @@ pub struct IrProgram {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IrEmitter {
+  idtable: Vec<String>,
   next_reg: Reg,
   next_label: LabelId,
 }
 
 impl IrEmitter {
-  pub fn new() -> IrEmitter {
+  pub fn new(idtable: &Vec<String>) -> IrEmitter {
     IrEmitter {
       next_reg: 0,
+      idtable: idtable.clone(),
       next_label: 0,
     }
   }
@@ -77,7 +126,7 @@ impl IrEmitter {
     match expr {
       ast::Expr::ConstInt(x) => IrVal::ConstInt(*x),
       ast::Expr::ConstBool(b) => IrVal::ConstBool(*b),
-      ast::Expr::Var(id) => IrVal::Var(*id),
+      ast::Expr::Var(id) => IrVal::Var(self.idtable[*id].clone()),
       ast::Expr::Binary { op, left, right } => self.emit_binary(op, left, right, instrs),
       ast::Expr::If { cond, tbr, fbr } => self.emit_if(cond, tbr, fbr, instrs),
       _ => IrVal::Reg(67),
@@ -151,11 +200,11 @@ impl IrEmitter {
     for stmt in &program.stmts {
       let inst = match stmt {
         ast::Stmt::Assignment { name_id, rhs } => IrInst::Assign {
-          dest: IrDest::Var(*name_id),
+          dest: IrDest::Var(self.idtable[*name_id].clone()),
           src: self.emit(&(**rhs), &mut ir),
         },
         ast::Stmt::Decl { name_id, rhs, .. } => IrInst::Assign {
-          dest: IrDest::Var(*name_id),
+          dest: IrDest::Var(self.idtable[*name_id].clone()),
           src: self.emit(&(**rhs), &mut ir),
         },
         ast::Stmt::Expr(expr) => IrInst::Assign {
@@ -181,7 +230,7 @@ mod tests {
     let lxms = &lexer.tokenize();
     let parser = Parser::new(lxms, lexer.idtable);
     let program = parser.parse_program();
-    let mut emitter = IrEmitter::new();
+    let mut emitter = IrEmitter::new(&program.idtable);
     emitter.emit_ir(&program)
   }
 
@@ -191,7 +240,7 @@ mod tests {
   fn silly_ir() {
     let s = "x = 1;";
     let ir = vec![IrInst::Assign {
-      dest: IrDest::Var(0),
+      dest: IrDest::Var("x".to_string()),
       src: IrVal::ConstInt(1),
     }];
     assert_eq!(emit_ir(s), ir);
@@ -217,7 +266,7 @@ mod tests {
         right: IrVal::ConstInt(2),
       },
       IrInst::Assign {
-        dest: IrDest::Var(0),
+        dest: IrDest::Var("x".to_string()),
         src: IrVal::Reg(0),
       },
     ];
@@ -227,11 +276,11 @@ mod tests {
       IrInst::Binary {
         dest: IrDest::Reg(0),
         op: BinaryOp::And,
-        left: IrVal::Var(1),
+        left: IrVal::Var("y".to_string()),
         right: IrVal::ConstInt(42),
       },
       IrInst::Assign {
-        dest: IrDest::Var(0),
+        dest: IrDest::Var("x".to_string()),
         src: IrVal::Reg(0),
       },
     ];
@@ -247,8 +296,10 @@ mod tests {
         x = 3;
       };
     ";
-    let x = emit_ir(s);
-    println!("{x:?}");
+    let ir = emit_ir(s);
+    for inst in &ir {
+      print!("{inst}");
+    }
     assert!(1 == 2);
   }
 }
