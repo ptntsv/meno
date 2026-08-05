@@ -19,12 +19,12 @@ fn two_decls() {
     Stmt::Decl {
       name_id: 0,
       decl_type: None,
-      rhs: Box::new(Expr::Int(1)),
+      rhs: Box::new(Expr::ConstInt(1)),
     },
     Stmt::Decl {
       name_id: 1,
       decl_type: Some(Type::Bool),
-      rhs: Box::new(Expr::False),
+      rhs: Box::new(Expr::ConstBool(false)),
     },
   ];
   assert_eq!(program.stmts, expect);

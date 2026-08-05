@@ -22,9 +22,9 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-  Int(i32),
-  False,
-  True,
+  ConstInt(i32),
+  ConstBool(bool),
+  Var(usize),
   Unary {
     op: UnaryOp,
     child: Box<Expr>,

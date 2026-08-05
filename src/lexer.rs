@@ -13,12 +13,12 @@ pub enum Token {
   Slash,
   Colon,
   Semicolon,
-  EQEQ,
-  EQ,
-  LT,
-  LTE,
-  GT,
-  GTE,
+  Eq,
+  Assign,
+  Lt,
+  Lte,
+  Gt,
+  Gte,
   LParen,
   RParen,
   LCBrace,
@@ -117,23 +117,23 @@ impl<'a> Lexer<'a> {
           '}' => Token::RCBrace,
           '=' => {
             if self.strm.next_if_eq(&'=').is_some() {
-              Token::EQEQ
+              Token::Eq
             } else {
-              Token::EQ
+              Token::Assign
             }
           }
           '<' => {
             if self.strm.next_if_eq(&'=').is_some() {
-              Token::LTE
+              Token::Lte
             } else {
-              Token::LT
+              Token::Lt
             }
           }
           '>' => {
             if self.strm.next_if_eq(&'=').is_some() {
-              Token::GTE
+              Token::Gte
             } else {
-              Token::GT
+              Token::Gt
             }
           }
           '&' => {
