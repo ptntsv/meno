@@ -1,9 +1,10 @@
-use std::fmt;
+use std::fmt::{self};
 
 use crate::ast;
 
 type Reg = usize;
 type LabelId = usize;
+type Label = String;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrVal {
@@ -64,18 +65,18 @@ pub enum IrInst {
     dest: IrDest,
     src: IrVal,
   },
-  Label(LabelId),
-  Jmp(LabelId),
+  Label(Label),
+  Jmp(Label),
   JmpIfFalse {
     cond: IrDest,
-    jmp_to: LabelId,
+    jmp_to: Label,
   },
 }
 
 impl fmt::Display for IrInst {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      IrInst::Label(n) => write!(f, ".label{n}:\n"),
+      IrInst::Label(name) => write!(f, "{name}:\n"),
       IrInst::Assign { dest, src } => write!(f, "  {dest} = {src}\n"),
       IrInst::Binary {
         dest,
@@ -83,8 +84,8 @@ impl fmt::Display for IrInst {
         left,
         right,
       } => write!(f, "  {dest} = {op} {left} {right}\n"),
-      IrInst::Jmp(n) => write!(f, "  jmp .label{n}\n"),
-      IrInst::JmpIfFalse { cond, jmp_to } => write!(f, "  jmp_if_false {cond} .label{jmp_to}\n"),
+      IrInst::Jmp(label) => write!(f, "  jmp {label}\n"),
+      IrInst::JmpIfFalse { cond, jmp_to } => write!(f, "  jmp_if_false {cond} {jmp_to}\n"),
     }
   }
 }
@@ -122,15 +123,41 @@ impl IrEmitter {
     self.next_label += 1;
     self.next_label - 1
   }
-  fn emit(&mut self, expr: &ast::Expr, instrs: &mut Vec<IrInst>) -> IrVal {
+  fn emit_expr(&mut self, expr: &ast::Expr, instrs: &mut Vec<IrInst>) -> IrVal {
     match expr {
       ast::Expr::ConstInt(x) => IrVal::ConstInt(*x),
       ast::Expr::ConstBool(b) => IrVal::ConstBool(*b),
       ast::Expr::Var(id) => IrVal::Var(self.idtable[*id].clone()),
       ast::Expr::Binary { op, left, right } => self.emit_binary(op, left, right, instrs),
       ast::Expr::If { cond, tbr, fbr } => self.emit_if(cond, tbr, fbr, instrs),
+      ast::Expr::Block { content } => self.emit_block(content, instrs),
       _ => IrVal::Reg(67),
     }
+  }
+  fn emit_block(&mut self, stmts: &Vec<ast::Stmt>, instrs: &mut Vec<IrInst>) -> IrVal {
+    let ret_r = self.new_reg();
+    let init_ret_instr = IrInst::Assign {
+      dest: IrDest::Reg(ret_r.clone()),
+      src: IrVal::ConstUnit,
+    };
+    instrs.push(init_ret_instr);
+    let init = &stmts[..stmts.len() - 1];
+    for stmt in init {
+      self.emit_stmt(stmt, instrs);
+    }
+    if let Some(last) = stmts.last() {
+      match last {
+        ast::Stmt::Expr(e) => {
+          let last_e_r = self.emit_expr(e, instrs);
+          instrs.push(IrInst::Assign {
+            dest: IrDest::Reg(ret_r.clone()),
+            src: last_e_r,
+          });
+        }
+        other => self.emit_stmt(other, instrs),
+      }
+    }
+    IrVal::Reg(ret_r)
   }
   fn emit_if(
     &mut self,
@@ -143,26 +170,27 @@ impl IrEmitter {
     let cond_r = IrDest::Reg(self.new_reg());
     let cond_instr = IrInst::Assign {
       dest: cond_r.clone(),
-      src: self.emit(&*cond, instrs),
+      src: self.emit_expr(&*cond, instrs),
     };
     instrs.push(cond_instr);
-    let else_label = self.new_label();
-    let merge_label = self.new_label();
+    let label_id = self.new_label();
+    let else_label = format!(".else{label_id}");
+    let merge_label = format!(".merge{label_id}");
     let jmp_if_false_instr = IrInst::JmpIfFalse {
       cond: cond_r.clone(),
       jmp_to: else_label.clone(),
     };
     instrs.push(jmp_if_false_instr);
-    let tb_r = self.emit(&**tbr, instrs);
+    let tb_r = self.emit_expr(&**tbr, instrs);
     instrs.push(IrInst::Assign {
       dest: IrDest::Reg(ret_val_r.clone()),
       src: tb_r,
     });
-    let jmp_merge_instr = IrInst::Jmp(merge_label);
+    let jmp_merge_instr = IrInst::Jmp(merge_label.clone());
     instrs.push(jmp_merge_instr);
     instrs.push(IrInst::Label(else_label.clone()));
     if let Some(_fbr) = fbr {
-      let fb_r = self.emit(&**_fbr, instrs);
+      let fb_r = self.emit_expr(&**_fbr, instrs);
       instrs.push(IrInst::Assign {
         dest: IrDest::Reg(ret_val_r.clone()),
         src: fb_r,
@@ -189,30 +217,33 @@ impl IrEmitter {
     let aux_inst = IrInst::Binary {
       dest: IrDest::Reg(lhs),
       op: op_map(&op),
-      left: self.emit(&*left, instrs),
-      right: self.emit(&*right, instrs),
+      left: self.emit_expr(&*left, instrs),
+      right: self.emit_expr(&*right, instrs),
     };
     instrs.push(aux_inst);
     IrVal::Reg(lhs)
   }
+  pub fn emit_stmt(&mut self, stmt: &ast::Stmt, instrs: &mut Vec<IrInst>) {
+    let inst = match stmt {
+      ast::Stmt::Assignment { name_id, rhs } => IrInst::Assign {
+        dest: IrDest::Var(self.idtable[*name_id].clone()),
+        src: self.emit_expr(&(**rhs), instrs),
+      },
+      ast::Stmt::Decl { name_id, rhs, .. } => IrInst::Assign {
+        dest: IrDest::Var(self.idtable[*name_id].clone()),
+        src: self.emit_expr(&(**rhs), instrs),
+      },
+      ast::Stmt::Expr(expr) => IrInst::Assign {
+        dest: IrDest::Reg(self.new_reg()),
+        src: self.emit_expr(expr, instrs),
+      },
+    };
+    instrs.push(inst);
+  }
   pub fn emit_ir(&mut self, program: &ast::Program) -> Vec<IrInst> {
     let mut ir: Vec<IrInst> = Vec::new();
     for stmt in &program.stmts {
-      let inst = match stmt {
-        ast::Stmt::Assignment { name_id, rhs } => IrInst::Assign {
-          dest: IrDest::Var(self.idtable[*name_id].clone()),
-          src: self.emit(&(**rhs), &mut ir),
-        },
-        ast::Stmt::Decl { name_id, rhs, .. } => IrInst::Assign {
-          dest: IrDest::Var(self.idtable[*name_id].clone()),
-          src: self.emit(&(**rhs), &mut ir),
-        },
-        ast::Stmt::Expr(expr) => IrInst::Assign {
-          dest: IrDest::Reg(self.new_reg()),
-          src: self.emit(expr, &mut ir),
-        },
-      };
-      ir.push(inst);
+      self.emit_stmt(stmt, &mut ir);
     }
     ir
   }
@@ -286,11 +317,13 @@ mod tests {
     ];
     assert_eq!(emit_ir(s), ir);
   }
+  // TODO:
+  // - IR for simple conditions [x]
   #[test]
   fn cond_ir() {
     let s = "
       let x = false;
-      if x {
+      if 1 && 2 {
         x = 2;
       } else {
         x = 3;
